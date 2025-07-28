@@ -136,84 +136,101 @@ export function ExcelDialog({ open, onOpenChange, onSave, excelFile, title, load
     }
   }
 
-  const handleUploadClick = async () => {
-    if (!fileInput) {
-      setErrors({ ...errors, file: "Please select a file first" })
-      return
-    }
-
-    setIsProcessing(true)
-    try {
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        try {
-          const data = new Uint8Array(e.target.result)
-          const workbook = XLSX.read(data, { type: 'array' })
-          
-          // Get the first sheet
-          const sheetName = workbook.SheetNames[0]
-          const worksheet = workbook.Sheets[sheetName]
-          
-          // Convert to JSON
-          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 })
-          
-          if (jsonData.length === 0) {
-            throw new Error("The Excel file appears to be empty")
-          }
-
-          // Get headers from first row
-          const headers = jsonData[0]
-          
-          // Convert rows to objects
-          const rows = jsonData.slice(1).map((row, index) => {
-            const rowObj = { _rowIndex: index + 2 } // +2 because we skip header and use 1-based indexing
-            headers.forEach((header, colIndex) => {
-              rowObj[header] = row[colIndex] || ''
-            })
-            return rowObj
-          })
-
-          const processedData = {
-            headers,
-            data: rows,
-            totalRows: rows.length,
-            fileName: fileInput.name,
-            sheetName
-          }
-
-          setExcelData(processedData)
-          setFilteredExcelData(rows)
-          
-          // Initialize selectedColumns with all columns selected by default
-          const initialSelectedColumns = {}
-          headers.forEach(header => {
-            initialSelectedColumns[header] = header
-          })
-          setFormData(prev => ({
-            ...prev,
-            selectedColumns: initialSelectedColumns
-          }))
-          
-          // Clear any previous errors
-          setErrors({})
-        } catch (error) {
-          console.error('Error processing Excel file:', error)
-          setErrors({ ...errors, file: `Error reading Excel file: ${error.message}` })
-        }
-      }
-      
-      reader.onerror = () => {
-        setErrors({ ...errors, file: "Error reading the file" })
-      }
-      
-      reader.readAsArrayBuffer(fileInput)
-    } catch (error) {
-      console.error('Error uploading file:', error)
-      setErrors({ ...errors, file: `Error processing file: ${error.message}` })
-    } finally {
-      setIsProcessing(false)
-    }
+const handleUploadClick = async () => {
+  if (!fileInput) {
+    setErrors({ ...errors, file: "Please select a file first" });
+    return;
   }
+
+  setIsProcessing(true);
+  try {
+    const formDataUpload = new FormData();
+    formDataUpload.append("file", fileInput);
+    formDataUpload.append("temporary", true);
+
+    const response = await fetch("http://localhost:5000/api/excel/files/upload", {
+      method: "POST",
+      body: formDataUpload,
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error || "Upload failed");
+    }
+
+    console.log("📁 Uploaded file:", result);
+
+    // ✅ Save fileId to formData
+    setFormData((prev) => ({
+      ...prev,
+      fileId: result.fileId, // ✅ set fileId here
+      excel_name: result.file?.fileName || prev.excel_name,
+    }));
+
+    // ✅ Trigger frontend parsing (XLSX read) afterward (optional)
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: "array" });
+
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+        if (jsonData.length === 0) throw new Error("The Excel file appears to be empty");
+
+        const headers = jsonData[0];
+        const rows = jsonData.slice(1).map((row, index) => {
+          const rowObj = { _rowIndex: index + 2 };
+          headers.forEach((header, colIndex) => {
+            rowObj[header] = row[colIndex] || "";
+          });
+          return rowObj;
+        });
+
+        const processedData = {
+          headers,
+          data: rows,
+          totalRows: rows.length,
+          fileName: fileInput.name,
+          sheetName,
+        };
+
+        setExcelData(processedData);
+        setFilteredExcelData(rows);
+
+        const initialSelectedColumns = {};
+        headers.forEach((header) => {
+          initialSelectedColumns[header] = header;
+        });
+
+        setFormData((prev) => ({
+          ...prev,
+          selectedColumns: initialSelectedColumns,
+        }));
+
+        setErrors({});
+      } catch (error) {
+        console.error("Error processing Excel file:", error);
+        setErrors({ ...errors, file: `Error reading Excel file: ${error.message}` });
+      }
+    };
+
+    reader.onerror = () => {
+      setErrors({ ...errors, file: "Error reading the file" });
+    };
+
+    reader.readAsArrayBuffer(fileInput);
+  } catch (error) {
+    console.error("❌ Upload error:", error.message);
+    setErrors({ ...errors, file: error.message });
+  } finally {
+    setIsProcessing(false);
+  }
+};
+
 
   const handleDragOver = (e) => {
     e.preventDefault()

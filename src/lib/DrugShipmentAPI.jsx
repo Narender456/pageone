@@ -7,5 +7,8 @@ export const shipmentsAPI = {
   update: (id, data) => apiClient.put(`/shipments/${id}`, data),
   delete: (id) => apiClient.delete(`/shipments/${id}`),
   acknowledge: (id, data) => apiClient.post(`/shipments/${id}/acknowledge`, data),
-  getRelatedFields: (studyId) => apiClient.get(`/shipments/related-fields/${studyId}`),
+  getRelatedFields: (studyId) => {
+    console.log("Calling API with studyId:", studyId)
+    return apiClient.get(`/shipments/related-fields/${studyId}`)
+  },
 }

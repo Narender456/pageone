@@ -10,7 +10,6 @@ import toast from "react-hot-toast"
 const ShipmentForm = ({ shipment, onSuccess, onCancel }) => {
   const [selectType, setSelectType] = useState(shipment?.selectType || "")
   const [selectedStudy, setSelectedStudy] = useState(shipment?.study?._id || "")
-  const [relatedData, setRelatedData] = useState(null)
   const [selectedItems, setSelectedItems] = useState({
     drugs: [],
     drugGroups: [],
@@ -36,25 +35,57 @@ const ShipmentForm = ({ shipment, onSuccess, onCancel }) => {
     },
   })
 
-  // Fetch studies - Fixed the function name
+  // Fetch studies
   const { data: studies, isLoading: studiesLoading, error: studiesError } = useQuery({
     queryKey: ["studies"],
     queryFn: () => studiesApi.getStudies(),
     select: (response) => {
       return response.data || response;
     },
+    retry: 3,
+    retryDelay: 1000,
   })
 
   // Fetch related fields when study changes
+  const isValidObjectId = (id) => /^[a-fA-F0-9]{24}$/.test(id)
+
   const {
     data: relatedFields,
-    refetch: refetchRelated,
+    isLoading: relatedFieldsLoading,
+    error: relatedFieldsError,
+    refetch: refetchRelatedFields,
   } = useQuery({
     queryKey: ["related-fields", selectedStudy],
-    queryFn: () => shipmentsAPI.getRelatedFields(selectedStudy),
-    enabled: !!selectedStudy,
-    select: (response) => response.data,
-    onSuccess: (data) => setRelatedData(data),
+    queryFn: async () => {
+      try {
+        const response = await shipmentsAPI.getRelatedFields(selectedStudy);
+        return response.data || response;
+      } catch (error) {
+        console.error("Error fetching related fields:", error);
+        // Handle different error types
+        if (error.response?.status === 404) {
+          throw new Error("Study not found or has no related data");
+        } else if (error.response?.status === 500) {
+          throw new Error("Server error. Please try again later");
+        } else if (error.code === 'NETWORK_ERROR') {
+          throw new Error("Network error. Please check your connection");
+        }
+        throw error;
+      }
+    },
+    enabled: !!selectedStudy && isValidObjectId(selectedStudy),
+    retry: (failureCount, error) => {
+      // Don't retry on 404 errors
+      if (error.response?.status === 404) {
+        return false;
+      }
+      return failureCount < 2;
+    },
+    retryDelay: 1000,
+    onError: (error) => {
+      console.error("Error loading related fields:", error);
+      toast.error(error.message || "Failed to load related data");
+    }
   })
 
   // Create/Update mutation
@@ -72,12 +103,7 @@ const ShipmentForm = ({ shipment, onSuccess, onCancel }) => {
     },
   })
 
-  useEffect(() => {
-    if (selectedStudy) {
-      refetchRelated()
-    }
-  }, [selectedStudy, refetchRelated])
-
+  // Handle initial shipment data
   useEffect(() => {
     if (shipment) {
       setSelectedStudy(shipment.study?._id || "")
@@ -99,9 +125,15 @@ const ShipmentForm = ({ shipment, onSuccess, onCancel }) => {
           excelRows: shipment.excelRows?.map((r) => r._id) || [],
         }))
       }
+
+      // Set quantities from existing shipment
+      if (shipment.quantities) {
+        setQuantities(shipment.quantities)
+      }
     }
   }, [shipment])
 
+  // Handle study change
   const handleStudyChange = (studyId) => {
     setSelectedStudy(studyId)
     setValue("study", studyId)
@@ -133,6 +165,10 @@ const ShipmentForm = ({ shipment, onSuccess, onCancel }) => {
     }))
   }
 
+  const handleRetryRelatedFields = () => {
+    refetchRelatedFields();
+  }
+
   const onSubmit = (data) => {
     // Validate selections
     if (selectType === "Drug" && selectedItems.drugs.length === 0) {
@@ -153,7 +189,7 @@ const ShipmentForm = ({ shipment, onSuccess, onCancel }) => {
       const requiredQuantities =
         selectType === "Drug"
           ? selectedItems.drugs
-          : relatedData?.drugGroups
+          : relatedFields?.drugGroups
               ?.filter((g) => selectedItems.drugGroups.includes(g._id))
               ?.flatMap((g) => g.drugs.map((d) => d._id)) || []
 
@@ -177,7 +213,16 @@ const ShipmentForm = ({ shipment, onSuccess, onCancel }) => {
   }
 
   const renderDrugSelection = () => {
-    if (!relatedData?.drugs?.length) {
+    if (relatedFieldsLoading) {
+      return (
+        <div className="text-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="text-gray-500 text-sm mt-2">Loading drugs...</p>
+        </div>
+      )
+    }
+
+    if (!relatedFields?.drugs?.length) {
       return (
         <div className="text-center py-8">
           <div className="text-gray-400 mb-2">
@@ -216,21 +261,21 @@ const ShipmentForm = ({ shipment, onSuccess, onCancel }) => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {relatedData.drugs.map((drug) => (
+                {relatedFields.drugs.map((drug) => (
                   <tr key={drug._id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{drug.drugName}</div>
+                      <div className="text-sm font-medium text-gray-900">{drug.drug_name}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                        {drug.remainingQuantity}
+                        {drug.remaining_quantity}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <input
                         type="number"
                         min="1"
-                        max={drug.remainingQuantity}
+                        max={drug.remaining_quantity}
                         className="w-20 px-3 py-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed text-sm"
                         value={quantities[drug._id] || ""}
                         onChange={(e) => handleQuantityChange(drug._id, e.target.value)}
@@ -257,7 +302,16 @@ const ShipmentForm = ({ shipment, onSuccess, onCancel }) => {
   }
 
   const renderDrugGroupSelection = () => {
-    if (!relatedData?.drugGroups?.length) {
+    if (relatedFieldsLoading) {
+      return (
+        <div className="text-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto"></div>
+          <p className="text-gray-500 text-sm mt-2">Loading drug groups...</p>
+        </div>
+      )
+    }
+
+    if (!relatedFields?.drugGroups?.length) {
       return (
         <div className="text-center py-8">
           <div className="text-gray-400 mb-2">
@@ -277,7 +331,7 @@ const ShipmentForm = ({ shipment, onSuccess, onCancel }) => {
           <h4 className="font-semibold text-gray-900">Select Drug Groups</h4>
         </div>
         <div className="space-y-4">
-          {relatedData.drugGroups.map((group) => (
+          {relatedFields.drugGroups.map((group) => (
             <div key={group._id} className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
               <div className="p-4 bg-gray-50 border-b border-gray-200">
                 <div className="flex items-center space-x-3">
@@ -315,18 +369,18 @@ const ShipmentForm = ({ shipment, onSuccess, onCancel }) => {
                         {group.drugs.map((drug) => (
                           <tr key={drug._id} className="hover:bg-gray-50 transition-colors">
                             <td className="px-4 py-2">
-                              <div className="text-sm font-medium text-gray-900">{drug.drugName}</div>
+                              <div className="text-sm font-medium text-gray-900">{drug.drug_name}</div>
                             </td>
                             <td className="px-4 py-2">
                               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                {drug.remainingQuantity}
+                                {drug.remaining_quantity}
                               </span>
                             </td>
                             <td className="px-4 py-2">
                               <input
                                 type="number"
                                 min="1"
-                                max={drug.remainingQuantity}
+                                max={drug.remaining_quantity}
                                 className="w-20 px-3 py-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-sm"
                                 value={quantities[drug._id] || ""}
                                 onChange={(e) => handleQuantityChange(drug._id, e.target.value)}
@@ -348,7 +402,16 @@ const ShipmentForm = ({ shipment, onSuccess, onCancel }) => {
   }
 
   const renderExcelRowSelection = () => {
-    if (!relatedData?.excelRows?.length) {
+    if (relatedFieldsLoading) {
+      return (
+        <div className="text-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto"></div>
+          <p className="text-gray-500 text-sm mt-2">Loading excel rows...</p>
+        </div>
+      )
+    }
+
+    if (!relatedFields?.excelRows?.length) {
       return (
         <div className="text-center py-8">
           <div className="text-gray-400 mb-2">
@@ -361,7 +424,7 @@ const ShipmentForm = ({ shipment, onSuccess, onCancel }) => {
       )
     }
 
-    const headers = relatedData.headers || []
+    const headers = relatedFields.headers || []
 
     return (
       <div className="space-y-4">
@@ -385,7 +448,7 @@ const ShipmentForm = ({ shipment, onSuccess, onCancel }) => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {relatedData.excelRows.map((row) => (
+                {relatedFields.excelRows.map((row) => (
                   <tr key={row.id} className="hover:bg-gray-50 transition-colors">
                     {headers.map((header) => (
                       <td key={header} className="px-6 py-4 whitespace-nowrap">
@@ -438,7 +501,7 @@ const ShipmentForm = ({ shipment, onSuccess, onCancel }) => {
                 </option>
                 {studies?.map((study) => (
                   <option key={study._id} value={study._id} >
-                    {study.studyName}
+                    {study.study_name}
                   </option>
                 ))}
               </select>
@@ -460,31 +523,34 @@ const ShipmentForm = ({ shipment, onSuccess, onCancel }) => {
               )}
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Site <span className="text-red-500">*</span>
-              </label>
-              <select
-                {...register("siteNumber", { required: "Site is required" })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                disabled={!selectedStudy}
-              >
-                <option value="">Select Site</option>
-                {relatedData?.sites?.map((site) => (
-                  <option key={site._id} value={site._id}>
-                    {site.siteName}
+            {/* Site Number */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Site Number <span className="text-red-500">*</span>
+                </label>
+                <select
+                  {...register("siteNumber", { required: "Site number is required" })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  disabled={!selectedStudy || !relatedFields?.sites?.length}
+                >
+                  <option value="">
+                    {relatedFieldsLoading ? "Loading sites..." : "Select Site"}
                   </option>
-                ))}
-              </select>
-              {errors.siteNumber && (
-                <p className="mt-1 text-sm text-red-600 flex items-center">
-                  <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                  </svg>
-                  {errors.siteNumber.message}
-                </p>
-              )}
-            </div>
+                  {relatedFields?.sites?.map((site) => (
+                    <option key={site._id} value={site._id}>
+                      {site.siteName} ({site.siteId})
+                    </option>
+                  ))}
+                </select>
+                {errors.siteNumber && (
+                  <p className="mt-1 text-sm text-red-600 flex items-center">
+                    <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    {errors.siteNumber.message}
+                  </p>
+                )}
+              </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -528,17 +594,36 @@ const ShipmentForm = ({ shipment, onSuccess, onCancel }) => {
               value={selectType}
               onChange={(e) => handleSelectTypeChange(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-              disabled={!selectedStudy}
+              disabled={!selectedStudy || relatedFieldsLoading}
             >
-              <option value="">Select Type</option>
+              <option value="">
+                {relatedFieldsLoading ? "Loading..." : "Select Type"}
+              </option>
               <option value="Drug">Drug</option>
               <option value="DrugGroup">Drug Group</option>
               <option value="Randomization">Randomization</option>
             </select>
           </div>
 
+
+          {/* Show error if related fields failed to load */}
+          {relatedFieldsError && (
+            <div className="bg-red-50 border border-red-200 rounded-md p-4">
+              <div className="flex">
+                <svg className="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+                <div className="ml-3">
+                  <p className="text-sm text-red-800">
+                    Failed to load related data. Please try selecting the study again.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Dynamic Content Based on Select Type */}
-          {selectType && relatedData && (
+          {selectType && (
             <div className="border-t border-gray-200 pt-6">
               {selectType === "Drug" && renderDrugSelection()}
               {selectType === "DrugGroup" && renderDrugGroupSelection()}

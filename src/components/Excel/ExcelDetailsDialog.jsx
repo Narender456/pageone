@@ -74,22 +74,22 @@ const getSelectedStudies = () => {
                       <label className="text-sm font-medium text-muted-foreground">Name</label>
                       <p className="text-sm">{excel.excel_name}</p>
                     </div>
-                    <div>
+                    {/* <div>
                       <label className="text-sm font-medium text-muted-foreground">Status</label>
                       <div className="mt-1">
                         <Badge variant="secondary" className={getStatusColor(excel.isActive)}>
                           {excel.isActive ? "Active" : "Inactive"}
                         </Badge>
                       </div>
-                    </div>
-                    <div>
+                    </div> */}
+                    {/* <div>
                       <label className="text-sm font-medium text-muted-foreground">Unique ID</label>
                       <p className="text-sm font-mono">{excel.uniqueId}</p>
                     </div>
                     <div>
                       <label className="text-sm font-medium text-muted-foreground">Slug</label>
                       <p className="text-sm font-mono">{excel.slug}</p>
-                    </div>
+                    </div> */}
                     <div>
                       <label className="text-sm font-medium text-muted-foreground">Created</label>
                       <p className="text-sm">{formatDate(excel.date_created)}</p>

@@ -196,28 +196,50 @@ export function ExcelManagement() {
     }
   }
 
-  const addExcel = async (data) => {
-    try {
-      const result = await executeOperation(() => excelAPI.createExcel(data))
-      if (result) {
-        toast({
-          title: "Excel created",
-          description: "Excel has been created successfully",
-        })
-        setShowAddDialog(false)
-        refetchExcel()
-        refetchStats()
-      }
-    } catch (error) {
-      console.error('Error creating excel:', error)
-      toast({
-        title: "Error",
-        description: "Failed to create excel",
-        variant: "destructive"
-      })
-    }
+  const createRowsFromFile = async (fileId, studyIds) => {
+  try {
+    await executeOperation(() =>
+      excelAPI.createRowsFromFile({ fileId, studyIds })
+    )
+    toast({
+      title: "Data rows created",
+      description: "Excel data rows have been created from the uploaded file.",
+    })
+    // Optionally refetch data rows or update UI here
+  } catch (error) {
+    toast({
+      title: "Error",
+      description: "Failed to create data rows from Excel file.",
+      variant: "destructive",
+    })
   }
+}
 
+
+
+const addExcel = async (data) => {
+  try {
+    const result = await executeOperation(() => excelAPI.createExcel(data))
+    if (result && result.excel && result.excel._id) {
+      toast({
+        title: "Excel created",
+        description: "Excel has been created successfully",
+      })
+      setShowAddDialog(false)
+      refetchExcel()
+      refetchStats()
+      // Call backend to create data rows
+      await createRowsFromFile(result.excel._id, data.selectedStudies)
+    }
+  } catch (error) {
+    console.error('Error creating excel:', error)
+    toast({
+      title: "Error",
+      description: "Failed to create excel",
+      variant: "destructive"
+    })
+  }
+}
   const updateExcel = async (data) => {
     if (!editingExcel) return
     try {

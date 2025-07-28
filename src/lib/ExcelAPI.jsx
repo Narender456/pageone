@@ -62,12 +62,14 @@ class ExcelAPI {
 
     async createExcel(data) {
       try {
-        const payload = {
-          excel_name: data.excel_name || data.file?.name || data.name || "Unnamed Excel",
-          selectedStudies: data.selectedStudies || [],
-          Studies: data.selectedStudies || [], // Send both for compatibility
-          isActive: data.isActive !== undefined ? data.isActive : true,
-        }
+          const payload = {
+            excel_name: data.excel_name || data.file?.name || data.name || "Unnamed Excel",
+            fileId: data.fileId, // ✅ make sure this is passed
+            selectedStudies: data.selectedStudies || [],
+            Studies: data.selectedStudies || [],
+            isActive: data.isActive !== undefined ? data.isActive : true,
+          }
+
         
         console.log('Creating Excel with payload:', payload)
         const response = await apiClient.post("/excel", payload)
@@ -284,23 +286,16 @@ class ExcelAPI {
   }
 
   // Excel Data Row Management Methods
-  async createRowsFromFile(fileId, studyIds = []) {
-    try {
-      const payload = {
-      excelFile: fileId,
-      rowData: rowData,
-      studies: studyIds, // <-- Add this!
-      }
-      
-      console.log('Creating rows from file with payload:', payload)
-      const response = await apiClient.post("/excel/rows/create-from-file", payload)
-      return response
-    } catch (error) {
-      console.error('API Error:', error)
-      throw error
-    }
+async createRowsFromFile({ fileId, studyIds }) {
+  try {
+    const payload = { fileId, studyIds }
+    const response = await apiClient.post("/excel/rows/create-from-file", payload)
+    return response
+  } catch (error) {
+    console.error('API Error:', error)
+    throw error
   }
-
+}
   async getExcelDataRows(filters = {}) {
     const params = new URLSearchParams()
 

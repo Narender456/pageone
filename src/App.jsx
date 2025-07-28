@@ -19,6 +19,12 @@ import DrugGroupsPage from "./page/Drugs/DrugGroupsPage";
 import ExcelPage from "./page/Excel/ExcelPage";
 import ShipmentList from "./page/Shipment/ShipmentList";
 import AcknowledgeShipment from "./page/Shipment/AcknowledgeShipment";
+import OllamaChat from "./OllamaChat";
+import ShipmentPage from "./page/Shipment/ShipmentPage";
+import RolesPage from "./page/role/RolesPage";
+import StagePage from "./page/Stages/StagePage";
+import MenuOptionsPage from "./page/MenuOption/MenuOptionsPage";
+import PagesPage from "./page/pages/page";
 
 export default function App() {
   const { user, isLoading } = useAuth();
@@ -28,6 +34,7 @@ export default function App() {
   }
 
   return (
+    
     <Routes>
       <Route path="/" element={<LoginPage />} />
       <Route
@@ -131,7 +138,7 @@ export default function App() {
         />
      <Route path="/shipment" element={
         <ProtectedRoute>
-         <ShipmentList />
+         <ShipmentPage />
         </ProtectedRoute>
 
        
@@ -145,6 +152,39 @@ export default function App() {
        
       } 
         />
+      <Route path="/role" element={
+        <ProtectedRoute>
+        <RolesPage />
+        </ProtectedRoute>
+
+       
+      } 
+        />
+      <Route path="/stage" element={
+        <ProtectedRoute>
+        <StagePage />
+        </ProtectedRoute>
+
+       
+      } 
+        />
+        <Route path="/menue" element={
+        <ProtectedRoute>
+        <MenuOptionsPage />
+        </ProtectedRoute>
+
+       
+      } 
+        />
+        <Route path="/page" element={
+        <ProtectedRoute>
+        <PagesPage />
+      </ProtectedRoute>
+
+       
+      } 
+        />
+
 
     </Routes>
   );

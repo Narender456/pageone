@@ -1,140 +1,48 @@
 // constants/navigation.js
-import {
-  BarChart3,
-  Users,
-  ShoppingCart,
-  Package,
-  Settings,
-  Home,
-  FileText,
-  HelpCircle,
-  ChevronRight
-} from "lucide-react"
+import { buildNavigationItems, SUPPORT_ITEMS } from '../utils/navigationBuilder'
 
-export const NAVIGATION_ITEMS = [
-  {
-    title: "Dashboard",
-    url: "/dashboard",
-    icon: Home
-  },
-  {
-    title: "Analytics",
-    url: "#",
-    icon: BarChart3
-  },
-  {
-    title: "Users",
-    url: "/users",
-    icon: Users
-  },
-  {
-    title: "Studies",
-    icon: FileText,
-    isDropdown: true,
-    children: [
-      // {
-      //   title: "Study",
-      //   url: "/study",
-      //   icon: FileText,
-      // },
-      {
-        title: "Studies",
-        url: "/studies",
-        icon: FileText,
-      },
-      {
-        title: "Study Phases",
-        url: "/study-phases",
-        icon: Package,
-      },
-      {
-        title: "Study Type",
-        url: "/study-type",
-        icon: Package,
-      },
-            {
-        title: "Study Designs",
-        url: "/study-designs",
-        icon: Package,
-      },
-                  {
-        title: "Blinding Status",
-        url: "/blinding-status",
-        icon: Package,
-      }
-    ]
-  },
-  {
-    title: "Sites",
-    url: "/site",
-    icon: ShoppingCart
-  },
-    {
-    title: "Sponsors",
-    url: "/sponsors",
-    icon: Package
-  },
-  {
-    title: "Drugs",
-    icon: FileText,
-    isDropdown: true,
-    children: [
-      {
-        title: "Drugs",
-        url: "/drug",
-        icon: ShoppingCart
-      },
+// Example of how to use the dynamic navigation builder
+// This would typically be called in your component with actual menu data from API
 
-      {
-        title: "Drugs Group",
-        url: "/drug-group",
-        icon: ShoppingCart
-      },
-    ]
-  },
-    {
-    title: "Randomization",
-    url: "/excel",
-    icon: ShoppingCart
-  },
+export const getNavigationItems = (dynamicMenuOptions = []) => {
+  return buildNavigationItems(dynamicMenuOptions)
+}
+
+// For backward compatibility, export static items as default
+export const NAVIGATION_ITEMS = buildNavigationItems([])
+
+export { SUPPORT_ITEMS }
+
+// Example usage in a React component:
+/*
+import { useEffect, useState } from 'react'
+import { getNavigationItems } from './constants/navigation'
+import { menuOptionsApi } from './lib/menu-options-api'
+
+function NavigationComponent() {
+  const [navigationItems, setNavigationItems] = useState([])
   
-  {
-    title: "Shipments",
-    url: "/shipment",
-    icon: ShoppingCart
-  },
-    {
-    title: "acknowledge",
-    url: "/acknowledge",
-    icon: ShoppingCart
-  },
-
-  {
-    title: "Orders",
-    url: "#",
-    icon: ShoppingCart
-  },
-  {
-    title: "Products",
-    url: "#",
-    icon: Package
-  },
-  {
-    title: "Reports",
-    url: "#",
-    icon: FileText
-  }
-]
-
-export const SUPPORT_ITEMS = [
-  {
-    title: "Help Center",
-    url: "#",
-    icon: HelpCircle
-  },
-  {
-    title: "Settings",
-    url: "#",
-    icon: Settings
-  }
-]
+  useEffect(() => {
+    const fetchAndBuildNavigation = async () => {
+      try {
+        // Fetch dynamic menu options from API
+        const dynamicMenus = await menuOptionsApi.getMenuOptions()
+        
+        // Build navigation with dynamic menus
+        const builtNavigation = getNavigationItems(dynamicMenus)
+        setNavigationItems(builtNavigation)
+      } catch (error) {
+        console.error('Error building navigation:', error)
+        // Fallback to static navigation
+        setNavigationItems(getNavigationItems([]))
+      }
+    }
+    
+    fetchAndBuildNavigation()
+  }, [])
+  
+  return (
+    // Your navigation JSX here using navigationItems
+  )
+}
+*/

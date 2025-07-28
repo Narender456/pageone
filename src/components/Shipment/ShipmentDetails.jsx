@@ -1,287 +1,289 @@
 "use client"
-import { useQuery } from "@tanstack/react-query"; // ✅ correct
+import { useQuery } from "@tanstack/react-query"
+
 import { shipmentsAPI } from "../../lib/DrugShipmentAPI" 
 
 const ShipmentDetails = ({ shipment, onClose }) => {
-  const { data: detailsData, isLoading } = useQuery(
-    ["shipment-details", shipment._id],
-    () => shipmentsAPI.getById(shipment._id),
-    {
-      select: (response) => response.data,
+  const { data: detailsData, isLoading, error, isError } = useQuery({
+    queryKey: ["shipment-details", shipment._id],
+    queryFn: () => shipmentsAPI.getById(shipment._id),
+    select: (response) => {
+      console.log("Raw API response:", response);
+      // Try different possible response structures
+      if (response?.data) {
+        return response.data;
+      } else if (response) {
+        return response;
+      }
+      return null;
     },
-  )
+    enabled: !!shipment._id, // Only run query if shipment._id exists
+  });
+
+  console.log("Query state:", { detailsData, isLoading, error, isError });
+  console.log("Shipment object:", shipment);
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
       </div>
     )
   }
 
-  const renderDetailsTable = () => {
-    if (!detailsData?.acknowledgments) return null
+  if (isError) {
+    console.error("API Error:", error);
+    return (
+      <div className="flex items-center justify-center py-8">
+        <div className="text-red-600">Error loading shipment details: {error?.message || 'Unknown error'}</div>
+      </div>
+    )
+  }
 
-    if (shipment.selectType === "Drug") {
+  // Add debug logging to see what data we're getting
+  console.log("detailsData:", detailsData);
+  console.log("acknowledgments:", detailsData?.acknowledgments);
+  console.log("shipment.selectType:", shipment.selectType);
+
+  const renderDetailsTable = () => {
+    // Check if we have the necessary data
+    if (!detailsData) {
+      console.log("No detailsData available");
       return (
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Drug Name
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Sent Quantity
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Received
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Missing
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Damaged
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Status
-              </th>
+        <div className="mt-8 p-4 bg-yellow-50 border border-yellow-200 rounded">
+          <p className="text-yellow-800">No details data available</p>
+          <p className="text-sm text-yellow-600 mt-2">
+            This could mean:
+            <br />• The API call failed
+            <br />• The shipment ID is invalid
+            <br />• The response structure is different than expected
+          </p>
+        </div>
+      );
+    }
+
+    // Check if acknowledgments exist - try different possible property names
+    let acknowledgments = detailsData.acknowledgments || 
+                         detailsData.acknowledgements || 
+                         detailsData.items || 
+                         detailsData.details ||
+                         detailsData;
+
+    if (!acknowledgments) {
+      console.log("No acknowledgments available");
+      return (
+        <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded">
+          <p className="text-blue-800">No acknowledgments available</p>
+          <p className="text-sm text-blue-600 mt-2">Available data keys: {Object.keys(detailsData || {}).join(', ')}</p>
+        </div>
+      );
+    }
+
+    // Ensure acknowledgments is an array
+    if (!Array.isArray(acknowledgments)) {
+      console.log("Acknowledgments is not an array:", acknowledgments);
+      return (
+        <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded">
+          <p className="text-blue-800">Acknowledgments data is not in expected format</p>
+          <p className="text-sm text-blue-600 mt-2">Type: {typeof acknowledgments}</p>
+        </div>
+      );
+    }
+
+    if (acknowledgments.length === 0) {
+      console.log("Acknowledgments array is empty");
+      return (
+        <div className="mt-8 p-4 bg-gray-50 border border-gray-200 rounded">
+          <p className="text-gray-800">No acknowledgment records found</p>
+        </div>
+      );
+    }
+
+if (shipment.selectType === "Randomization") {
+  // Define preferred column order
+  const preferredOrder = ["Random_Number", "Kit_Number", "Dummy_Treatment", "SITE", "Block", "Status"]
+
+  return (
+    <div className="mt-8">
+      <h3 className="text-lg font-semibold mb-4">Randomization Details</h3>
+      <div className="overflow-x-auto">
+        <table className="min-w-full border border-gray-300">
+          <thead>
+            <tr className="border-b border-gray-300 bg-gray-50">
+              {preferredOrder.map((header) => (
+                <th key={header} className="text-left py-3 px-4 font-medium text-gray-900 text-base border-r border-gray-300">
+                  {header}
+                </th>
+              ))}
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {detailsData.acknowledgments.map((ack) => (
-              <tr key={ack._id} className="hover:bg-gray-50">
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  {ack.drug?.drugName || "N/A"}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {ack.acknowledgedQuantity || 0}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {ack.receivedQuantity || 0}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {ack.missingQuantity || 0}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {ack.damagedQuantity || 0}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span
-                    className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                      ack.status === "received"
-                        ? "bg-green-100 text-green-800"
-                        : ack.status === "partial"
-                          ? "bg-yellow-100 text-yellow-800"
-                          : ack.status === "missing"
-                            ? "bg-red-100 text-red-800"
-                            : "bg-gray-100 text-gray-800"
-                    }`}
-                  >
-                    {ack.status}
-                  </span>
-                </td>
-              </tr>
-            ))}
+          <tbody>
+            {acknowledgments.map((ack, index) => {
+              // Determine status based on acknowledgment
+              const currentStatus =
+                ack.status && ack.status !== "Not Acknowledged" ? "Acknowledged" : "Not Acknowledged"
+
+              return (
+                <tr key={ack._id || index} className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                  {preferredOrder.map((header) => {
+                    // Handle Status column specially
+                    if (header === "Status") {
+                      return (
+                        <td key={header} className="py-3 px-4 text-gray-900 border-r border-gray-300">
+                          {currentStatus}
+                        </td>
+                      )
+                    }
+
+                    // Display excel row data for other columns
+                    // Fixed: Added better null checking and fallback
+                    let cellValue = "";
+                    if (ack.excelRow && ack.excelRow.rowData && ack.excelRow.rowData[header]) {
+                      cellValue = ack.excelRow.rowData[header];
+                    } else if (ack.excelRow && ack.excelRow[header]) {
+                      // Fallback: check if the data is directly on excelRow
+                      cellValue = ack.excelRow[header];
+                    } else {
+                      // Final fallback: show a placeholder or fetch from shipment excelRows
+                      const matchingExcelRow = shipment.excelRows && shipment.excelRows.find(row => 
+                        row._id.toString() === ack.excelRow
+                      );
+                      if (matchingExcelRow && matchingExcelRow.rowData) {
+                        cellValue = matchingExcelRow.rowData[header] || "";
+                      } else {
+                        cellValue = "N/A";
+                      }
+                    }
+
+                    return (
+                      <td key={header} className="py-3 px-4 text-gray-900 border-r border-gray-300">
+                        {cellValue}
+                      </td>
+                    )
+                  })}
+                </tr>
+              )
+            })}
           </tbody>
         </table>
+      </div>
+    </div>
+  )
+    } else if (shipment.selectType === "Drug") {
+      return (
+        <div className="mt-8">
+          <h3 className="text-lg font-semibold mb-4">Drug Details</h3>
+          <div className="overflow-x-auto">
+            <table className="min-w-full border border-gray-300">
+              <thead>
+                <tr className="border-b border-gray-300 bg-gray-50">
+                  <th className="text-left py-3 px-4 font-medium text-gray-900 text-base border-r border-gray-300">Drug Name</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900 text-base border-r border-gray-300">Sent Quantity</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900 text-base border-r border-gray-300">Received</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900 text-base border-r border-gray-300">Missing</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900 text-base border-r border-gray-300">Damaged</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900 text-base">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {acknowledgments.map((ack, index) => (
+                  <tr key={ack._id || index} className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                    <td className="py-3 px-4 text-gray-900 border-r border-gray-300">{ack.drug?.drugName || "N/A"}</td>
+                    <td className="py-3 px-4 text-gray-900 border-r border-gray-300">{ack.acknowledgedQuantity || 0}</td>
+                    <td className="py-3 px-4 text-gray-900 border-r border-gray-300">{ack.receivedQuantity || 0}</td>
+                    <td className="py-3 px-4 text-gray-900 border-r border-gray-300">{ack.missingQuantity || 0}</td>
+                    <td className="py-3 px-4 text-gray-900 border-r border-gray-300">{ack.damagedQuantity || 0}</td>
+                    <td className="py-3 px-4 text-gray-900">{ack.status || "Not Acknowledged"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )
     } else if (shipment.selectType === "DrugGroup") {
       return (
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Group Name
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Drug Name
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Sent Quantity
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Received
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Missing
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Damaged
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Status
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {detailsData.acknowledgments.map((ack) => (
-              <tr key={ack._id} className="hover:bg-gray-50">
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  {ack.drugGroup?.groupName || "N/A"}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {ack.drug?.drugName || "N/A"}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {ack.acknowledgedQuantity || 0}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {ack.receivedQuantity || 0}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {ack.missingQuantity || 0}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {ack.damagedQuantity || 0}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span
-                    className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                      ack.status === "received"
-                        ? "bg-green-100 text-green-800"
-                        : ack.status === "partial"
-                          ? "bg-yellow-100 text-yellow-800"
-                          : ack.status === "missing"
-                            ? "bg-red-100 text-red-800"
-                            : "bg-gray-100 text-gray-800"
-                    }`}
-                  >
-                    {ack.status}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="mt-8">
+          <h3 className="text-lg font-semibold mb-4">Drug Group Details</h3>
+          <div className="overflow-x-auto">
+            <table className="min-w-full border border-gray-300">
+              <thead>
+                <tr className="border-b border-gray-300 bg-gray-50">
+                  <th className="text-left py-3 px-4 font-medium text-gray-900 text-base border-r border-gray-300">Group Name</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900 text-base border-r border-gray-300">Drug Name</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900 text-base border-r border-gray-300">Sent Quantity</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900 text-base border-r border-gray-300">Received</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900 text-base border-r border-gray-300">Missing</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900 text-base border-r border-gray-300">Damaged</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900 text-base">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {acknowledgments.map((ack, index) => (
+                  <tr key={ack._id || index} className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                    <td className="py-3 px-4 text-gray-900 border-r border-gray-300">{ack.drugGroup?.groupName || "N/A"}</td>
+                    <td className="py-3 px-4 text-gray-900 border-r border-gray-300">{ack.drug?.drugName || "N/A"}</td>
+                    <td className="py-3 px-4 text-gray-900 border-r border-gray-300">{ack.acknowledgedQuantity || 0}</td>
+                    <td className="py-3 px-4 text-gray-900 border-r border-gray-300">{ack.receivedQuantity || 0}</td>
+                    <td className="py-3 px-4 text-gray-900 border-r border-gray-300">{ack.missingQuantity || 0}</td>
+                    <td className="py-3 px-4 text-gray-900 border-r border-gray-300">{ack.damagedQuantity || 0}</td>
+                    <td className="py-3 px-4 text-gray-900">{ack.status || "Not Acknowledged"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )
-    } else if (shipment.selectType === "Randomization") {
+    } else {
       return (
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Kit Number
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Row Data
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Status
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {detailsData.acknowledgments.map((ack) => (
-              <tr key={ack._id} className="hover:bg-gray-50">
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  {ack.excelRow?.rowData?.Kit_Number || `Row ${ack.excelRow?._id}`}
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-500">
-                  <pre className="text-xs bg-gray-100 p-2 rounded whitespace-pre-wrap overflow-x-auto max-w-xs">
-                    {JSON.stringify(ack.excelRow?.rowData, null, 2)}
-                  </pre>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span
-                    className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                      ack.status === "received"
-                        ? "bg-green-100 text-green-800"
-                        : ack.status === "missing"
-                          ? "bg-red-100 text-red-800"
-                          : ack.status === "damaged"
-                            ? "bg-orange-100 text-orange-800"
-                            : "bg-gray-100 text-gray-800"
-                    }`}
-                  >
-                    {ack.status}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )
+        <div className="mt-8 p-4 bg-orange-50 border border-orange-200 rounded">
+          <p className="text-orange-800">Unknown shipment type: {shipment.selectType}</p>
+          <p className="text-sm text-orange-600 mt-2">Available data: {JSON.stringify(detailsData, null, 2)}</p>
+        </div>
+      );
     }
   }
 
+  const isAcknowledged = detailsData?.acknowledgments?.every((ack) => ack.status !== "Not Acknowledged") || 
+                     detailsData?.acknowledgements?.every((ack) => ack.status !== "Not Acknowledged") || 
+                     false
+
   return (
-    <div className="space-y-6">
-      {/* Shipment Info */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div className="p-6 bg-white">
+      {/* Title */}
+      <h2 className="text-2xl font-bold text-gray-900 mb-8">Shipment Details</h2>
+
+      {/* Shipment Info - Simple text format matching the image */}
+      <div className="space-y-4 mb-6">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Shipment Number
-          </label>
-          <p className="text-sm text-gray-900 font-medium">
-            {shipment.shipmentNumber}
-          </p>
+          <span className="text-blue-600 text-lg">Shipment Number: </span>
+          <span className="text-blue-600 text-lg">{shipment.shipmentNumber}</span>
         </div>
+
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Study
-          </label>
-          <p className="text-sm text-gray-900">
-            {shipment.study?.studyName || "N/A"}
-          </p>
+          <span className="text-blue-600 text-lg">Study: </span>
+          <span className="text-blue-600 text-lg">{shipment.study?.study_name || "N/A"}</span>
         </div>
+
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Site
-          </label>
-          <p className="text-sm text-gray-900">
-            {shipment.siteNumber?.siteName || "N/A"}
-          </p>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Shipment Date
-          </label>
-          <p className="text-sm text-gray-900">
-            {new Date(shipment.shipmentDate).toLocaleDateString()}
-          </p>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Type
-          </label>
-          <p className="text-sm text-gray-900">
-            {shipment.selectType}
-          </p>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Status
-          </label>
-          <span
-            className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-              shipment.isAcknowledged 
-                ? "bg-green-100 text-green-800" 
-                : "bg-yellow-100 text-yellow-800"
-            }`}
-          >
-            {shipment.isAcknowledged ? "Acknowledged" : "Pending"}
-          </span>
+          <span className="text-blue-600 text-lg">Shipment Date: </span>
+          <span className="text-blue-600 text-lg">{new Date(shipment.shipmentDate).toISOString().split("T")[0]}</span>
         </div>
       </div>
 
       {/* Details Table */}
-      <div>
-        <h4 className="text-lg font-medium text-gray-900 mb-4">
-          Shipment Details
-        </h4>
-        <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
-          <div className="overflow-x-auto">
-            {renderDetailsTable()}
-          </div>
-        </div>
+      {renderDetailsTable()}
+
+      {/* Acknowledged Status */}
+      <div className="mt-8">
+        <span className="text-blue-600 text-lg">Acknowledged: </span>
+        <span className="text-blue-600 text-lg">{isAcknowledged ? "Yes" : "No"}</span>
       </div>
 
-      {/* Actions */}
-      <div className="flex justify-end pt-4 border-t border-gray-200">
-        <button 
-          onClick={onClose} 
-          className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200"
-        >
+      {/* Close Button */}
+      <div className="flex justify-end mt-8 pt-6 border-t border-gray-200">
+        <button onClick={onClose} className="btn btn-secondary">
           Close
         </button>
       </div>

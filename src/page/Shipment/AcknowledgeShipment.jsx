@@ -17,34 +17,52 @@ const AcknowledgeShipment = () => {
   const queryClient = useQueryClient()
 
   // Fetch shipments for acknowledgment
-  const { data: shipmentsData, isLoading } = useQuery(
-    ["acknowledge-shipments", currentPage],
-    () =>
+  const { data: shipmentsData, isLoading, error, isError } = useQuery({
+    queryKey: ["acknowledge-shipments", currentPage],
+    queryFn: () =>
       shipmentsAPI.getAll({
         page: currentPage,
         limit: 10,
       }),
-    {
-      select: (response) => response.data,
-      keepPreviousData: true,
+    select: (response) => {
+      console.log("API Response:", response);
+      return response?.data || response;
     },
-  )
+    placeholderData: (previousData) => previousData,
+    retry: 3,
+    retryDelay: 1000,
+    onError: (error) => {
+      console.error("Query Error:", error);
+      toast.error("Failed to fetch shipments");
+    }
+  })
 
-  // Fetch shipment details
-  const { data: shipmentDetails, isLoading: detailsLoading } = useQuery(
-    ["shipment-details", selectedShipment?._id],
-    () => shipmentsAPI.getById(selectedShipment._id),
-    {
-      enabled: !!selectedShipment,
-      select: (response) => response.data,
+  // Fetch shipment details - FIXED: Better error handling and debugging
+  const { data: shipmentDetails, isLoading: detailsLoading, error: detailsError } = useQuery({
+    queryKey: ["shipment-details", selectedShipment?._id],
+    queryFn: async () => {
+      console.log("Fetching details for shipment:", selectedShipment._id);
+      const response = await shipmentsAPI.getById(selectedShipment._id);
+      console.log("Shipment details response:", response);
+      return response;
     },
-  )
+    enabled: !!selectedShipment?._id,
+    select: (response) => {
+      console.log("Processing shipment details:", response);
+      return response?.data || response;
+    },
+    onError: (error) => {
+      console.error("Failed to fetch shipment details:", error);
+      toast.error("Failed to fetch shipment details");
+    }
+  })
 
   // Acknowledge mutation
-  const acknowledgeMutation = useMutation(({ shipmentId, data }) => shipmentsAPI.acknowledge(shipmentId, data), {
+  const acknowledgeMutation = useMutation({
+    mutationFn: ({ shipmentId, data }) => shipmentsAPI.acknowledge(shipmentId, data),
     onSuccess: () => {
-      queryClient.invalidateQueries("acknowledge-shipments")
-      queryClient.invalidateQueries(["shipment-details", selectedShipment._id])
+      queryClient.invalidateQueries({ queryKey: ["acknowledge-shipments"] })
+      queryClient.invalidateQueries({ queryKey: ["shipment-details", selectedShipment._id] })
       toast.success("Acknowledgment updated successfully")
       setShowAcknowledgment(false)
       setSelectedShipment(null)
@@ -56,8 +74,11 @@ const AcknowledgeShipment = () => {
   })
 
   const handleViewDetails = (shipment) => {
+    console.log("Selected shipment for details:", shipment);
     setSelectedShipment(shipment)
     setShowAcknowledgment(true)
+    // Reset acknowledgment data when opening new shipment
+    setAcknowledgmentData({})
   }
 
   const handleAcknowledgmentChange = (key, value) => {
@@ -107,15 +128,63 @@ const AcknowledgeShipment = () => {
   }
 
   const renderAcknowledgmentForm = () => {
-    if (!shipmentDetails || detailsLoading) {
+    console.log("Rendering acknowledgment form:", {
+      shipmentDetails,
+      detailsLoading,
+      detailsError,
+      selectedShipment
+    });
+
+    // Show loading state
+    if (detailsLoading) {
       return (
         <div className="flex items-center justify-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <span className="ml-2 text-gray-600">Loading shipment details...</span>
+        </div>
+      )
+    }
+
+    // Show error state
+    if (detailsError) {
+      return (
+        <div className="flex flex-col items-center justify-center py-8 text-red-500">
+          <p>Error loading shipment details: {detailsError?.message}</p>
+          <button 
+            onClick={() => queryClient.invalidateQueries({ queryKey: ["shipment-details", selectedShipment._id] })}
+            className="mt-2 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+          >
+            Retry
+          </button>
+        </div>
+      )
+    }
+
+    // Show no data state
+    if (!shipmentDetails) {
+      return (
+        <div className="flex flex-col items-center justify-center py-8 text-gray-500">
+          <p>No shipment details available</p>
+          <pre className="mt-2 text-xs bg-gray-100 p-2 rounded">
+            {JSON.stringify({ shipmentDetails, detailsLoading, selectedShipment }, null, 2)}
+          </pre>
         </div>
       )
     }
 
     const acknowledgments = shipmentDetails.acknowledgments || []
+
+    // Show no acknowledgments state
+    if (acknowledgments.length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center py-8 text-gray-500">
+          <p>No acknowledgments found for this shipment</p>
+          <pre className="mt-2 text-xs bg-gray-100 p-2 rounded max-w-full overflow-auto">
+            {JSON.stringify(shipmentDetails, null, 2)}
+          </pre>
+        </div>
+      )
+    }
 
     if (selectedShipment.selectType === "Drug" || selectedShipment.selectType === "DrugGroup") {
       return (
@@ -220,7 +289,16 @@ const AcknowledgeShipment = () => {
                       Kit Number
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Row Data
+                      Site
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Random Number
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Dummy Treatment
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Block
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Current Status
@@ -235,16 +313,24 @@ const AcknowledgeShipment = () => {
                     const kitNumber = ack.excelRow?.rowData?.Kit_Number || `row_${ack.excelRow?._id}`
                     const currentStatus = ack.status || "Not Acknowledged"
                     const isAcknowledged = currentStatus !== "Not Acknowledged"
+                    const rowData = ack.excelRow?.rowData || {}
 
                     return (
                       <tr key={ack._id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                           {kitNumber}
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-500">
-                          <pre className="text-xs bg-gray-100 p-2 rounded max-w-xs overflow-auto whitespace-pre-wrap">
-                            {JSON.stringify(ack.excelRow?.rowData, null, 2)}
-                          </pre>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {rowData.SITE || "N/A"}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {rowData.Random_Number || "N/A"}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {rowData.Dummy_Treatment || "N/A"}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {rowData.Block || "N/A"}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span
@@ -292,6 +378,16 @@ const AcknowledgeShipment = () => {
         </div>
       )
     }
+
+    // Fallback for unknown selectType
+    return (
+      <div className="flex flex-col items-center justify-center py-8 text-gray-500">
+        <p>Unknown shipment type: {selectedShipment.selectType}</p>
+        <pre className="mt-2 text-xs bg-gray-100 p-2 rounded max-w-full overflow-auto">
+          {JSON.stringify(selectedShipment, null, 2)}
+        </pre>
+      </div>
+    )
   }
 
   const isFullyAcknowledged = shipmentDetails?.acknowledgments?.every((ack) => ack.status !== "Not Acknowledged")
@@ -337,6 +433,19 @@ const AcknowledgeShipment = () => {
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
                   </td>
                 </tr>
+              ) : isError ? (
+                <tr>
+                  <td colSpan="6" className="px-6 py-8 text-center text-red-500">
+                    Error loading shipments: {error?.message || "Unknown error"}
+                    <br />
+                    <button 
+                      onClick={() => window.location.reload()} 
+                      className="mt-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                    >
+                      Retry
+                    </button>
+                  </td>
+                </tr>
               ) : shipmentsData?.shipments?.length > 0 ? (
                 shipmentsData.shipments.map((shipment, index) => (
                   <tr key={shipment._id} className="hover:bg-gray-50">
@@ -375,7 +484,25 @@ const AcknowledgeShipment = () => {
               ) : (
                 <tr>
                   <td colSpan="6" className="px-6 py-8 text-center text-gray-500">
-                    No shipments found
+                    <div className="space-y-2">
+                      <p>No shipments found</p>
+                      <div className="text-xs text-gray-400">
+                        {shipmentsData ? (
+                          <>
+                            <p>API Response: {JSON.stringify(shipmentsData, null, 2)}</p>
+                            <p>Total shipments: {shipmentsData?.shipments?.length || 0}</p>
+                          </>
+                        ) : (
+                          <p>No data received from API</p>
+                        )}
+                      </div>
+                      <button 
+                        onClick={() => window.location.reload()} 
+                        className="mt-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
+                      >
+                        Refresh
+                      </button>
+                    </div>
                   </td>
                 </tr>
               )}
@@ -423,7 +550,7 @@ const AcknowledgeShipment = () => {
                   Study
                 </label>
                 <p className="text-sm text-gray-900">
-                  {selectedShipment.study?.studyName || "N/A"}
+                  {selectedShipment.study?.study_name || "N/A"}
                 </p>
               </div>
               <div>
@@ -440,6 +567,14 @@ const AcknowledgeShipment = () => {
                 </label>
                 <p className="text-sm text-gray-900">
                   {new Date(selectedShipment.shipmentDate).toLocaleDateString()}
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Shipment Type
+                </label>
+                <p className="text-sm text-gray-900">
+                  {selectedShipment.selectType || "N/A"}
                 </p>
               </div>
             </div>
@@ -463,10 +598,10 @@ const AcknowledgeShipment = () => {
               {!isFullyAcknowledged && (
                 <button 
                   type="submit" 
-                  disabled={acknowledgeMutation.isLoading} 
+                  disabled={acknowledgeMutation.isPending} 
                   className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
                 >
-                  {acknowledgeMutation.isLoading ? "Acknowledging..." : "Acknowledge"}
+                  {acknowledgeMutation.isPending ? "Acknowledging..." : "Acknowledge"}
                 </button>
               )}
             </div>

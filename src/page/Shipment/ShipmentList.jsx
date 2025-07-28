@@ -8,7 +8,7 @@ import { siteAPI } from "../../lib/SiteAPI"
 import ShipmentForm from "../../components/Shipment/ShipmentForm"
 import ShipmentDetails from "../../components/Shipment/ShipmentDetails"
 import Modal from "../../components/Shipment/Modal"
-import Pagination from "../../components/Shipment/Modal"
+import Pagination from "../../components/Shipment/Pagination"
 import toast from "react-hot-toast"
 import { Plus, Eye, Edit, Trash2 } from "lucide-react"
 
@@ -26,44 +26,95 @@ const ShipmentList = () => {
 
   const queryClient = useQueryClient()
 
-  // Fetch shipments
-const { data: shipmentsData, isLoading } = useQuery({
-  queryKey: ["shipments", currentPage, filters],
-  queryFn: () =>
-    shipmentsAPI.getAll({
-      page: currentPage,
-      limit: 10,
-      ...filters,
-    }),
-  select: (response) => response.data,
-  keepPreviousData: true,
-});
+  // Fetch shipments with better error handling
+  const { data: shipmentsData, isLoading, error } = useQuery({
+    queryKey: ["shipments", currentPage, filters],
+    queryFn: async () => {
+      try {
+        console.log("Fetching shipments with params:", {
+          page: currentPage,
+          limit: 10,
+          ...filters,
+        });
+
+        const response = await shipmentsAPI.getAll({
+          page: currentPage,
+          limit: 10,
+          ...filters,
+        });
+
+        console.log("API Response:", response);
+
+        // Handle different response structures
+        if (response?.data) {
+          // If response has a data property
+          return response.data;
+        } else if (response?.shipments) {
+          // If response directly contains shipments
+          return response;
+        } else if (Array.isArray(response)) {
+          // If response is directly an array
+          return {
+            shipments: response,
+            pagination: { pages: 1, current: 1, total: response.length }
+          };
+        } else {
+          // Fallback for unexpected response structure
+          console.warn("Unexpected response structure:", response);
+          return { shipments: [], pagination: { pages: 1, current: 1, total: 0 } };
+        }
+      } catch (error) {
+        console.error("Error in queryFn:", error);
+        throw error;
+      }
+    },
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    cacheTime: 10 * 60 * 1000, // 10 minutes
+    retry: 3,
+    retryDelay: attemptIndex => Math.min(1000 * 2 ** attemptIndex, 30000),
+  });
 
   // Fetch studies for filter
-const { data: studies } = useQuery({
-  queryKey: ["studies"],
-  queryFn: () => studiesApi.getAll(),
-  select: (response) => response.data,
-});
+  const { data: studies } = useQuery({
+    queryKey: ["studies"],
+    queryFn: async () => {
+      try {
+        const response = await studiesApi.getAll();
+        return response?.data || response || [];
+      } catch (error) {
+        console.error("Error fetching studies:", error);
+        return [];
+      }
+    },
+    staleTime: 10 * 60 * 1000,
+  });
 
-const { data: sites } = useQuery({
-  queryKey: ["sites", filters.study],
-  queryFn: () => siteAPI.getAll({ study: filters.study }),
-  select: (response) => response.data,
-  enabled: !!filters.study,
-});
+  const { data: sites } = useQuery({
+    queryKey: ["sites", filters.study],
+    queryFn: async () => {
+      try {
+        const response = await siteAPI.getAll({ study: filters.study });
+        return response?.data || response || [];
+      } catch (error) {
+        console.error("Error fetching sites:", error);
+        return [];
+      }
+    },
+    enabled: !!filters.study,
+    staleTime: 10 * 60 * 1000,
+  });
 
   // Delete mutation
-const deleteMutation = useMutation({
-  mutationFn: (id) => shipmentsAPI.delete(id),
-  onSuccess: () => {
-    queryClient.invalidateQueries({ queryKey: ["shipments"] });
-    toast.success("Shipment deleted successfully");
-  },
-  onError: (error) => {
-    toast.error(error.response?.data?.message || "Failed to delete shipment");
-  },
-});
+  const deleteMutation = useMutation({
+    mutationFn: (id) => shipmentsAPI.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["shipments"] });
+      toast.success("Shipment deleted successfully");
+    },
+    onError: (error) => {
+      toast.error(error.response?.data?.message || "Failed to delete shipment");
+    },
+  });
 
   const handleEdit = (shipment) => {
     setSelectedShipment(shipment)
@@ -90,9 +141,24 @@ const deleteMutation = useMutation({
 
   const handleFormSuccess = () => {
     handleFormClose()
-    queryClient.invalidateQueries("shipments")
+    queryClient.invalidateQueries({ queryKey: ["shipments"] })
     toast.success(editMode ? "Shipment updated successfully" : "Shipment created successfully")
   }
+
+  // Enhanced debug logging
+  console.log("ShipmentList Debug:", {
+    isLoading,
+    error: error?.message || error,
+    shipmentsData,
+    shipmentsArray: shipmentsData?.shipments,
+    shipmentsCount: shipmentsData?.shipments?.length || 0,
+    filters,
+    currentPage
+  });
+
+  // Safe data access
+  const shipments = shipmentsData?.shipments || [];
+  const pagination = shipmentsData?.pagination || { pages: 1, current: 1, total: 0 };
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
@@ -127,7 +193,7 @@ const deleteMutation = useMutation({
                   <option value="">All Studies</option>
                   {studies?.map((study) => (
                     <option key={study._id} value={study._id}>
-                      {study.studyName}
+                      {study.studyName || study.study_name}
                     </option>
                   ))}
                 </select>
@@ -173,6 +239,34 @@ const deleteMutation = useMutation({
           </div>
         </div>
 
+        {/* Error Display */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-md p-4">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-red-800">Error loading shipments</h3>
+                <div className="mt-2 text-sm text-red-700">
+                  {error.message || 'An error occurred while fetching shipments'}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Debug Info (remove in production) */}
+        {/* {process.env.NODE_ENV === 'development' && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+            <p className="text-sm text-yellow-800">
+              Debug: Found {shipments.length} shipments | Loading: {isLoading ? 'Yes' : 'No'} | Error: {error ? 'Yes' : 'No'}
+            </p>
+          </div>
+        )} */}
+
         {/* Shipments Table */}
         <div className="bg-white shadow rounded-lg border border-gray-200 overflow-hidden">
           <div className="overflow-x-auto">
@@ -199,24 +293,38 @@ const deleteMutation = useMutation({
                       </div>
                     </td>
                   </tr>
-                ) : shipmentsData?.shipments?.length > 0 ? (
-                  shipmentsData.shipments.map((shipment) => (
+                ) : error ? (
+                  <tr>
+                    <td colSpan="8" className="text-center py-12">
+                      <div className="flex flex-col items-center">
+                        <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4">
+                          <svg className="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </div>
+                        <p className="text-sm text-red-600">Failed to load shipments</p>
+                        <p className="text-xs text-gray-400 mt-1">Please check your connection and try again</p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : shipments.length > 0 ? (
+                  shipments.map((shipment) => (
                     <tr key={shipment._id} className="hover:bg-gray-50 transition-colors duration-150">
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {shipment.study?.studyName || "N/A"}
+                        {shipment.study?.studyName || shipment.study?.study_name || "N/A"}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {shipment.shipmentNumber}
+                        {shipment.shipmentNumber || "N/A"}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {shipment.siteNumber?.siteName || "N/A"}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {new Date(shipment.shipmentDate).toLocaleDateString()}
+                        {shipment.shipmentDate ? new Date(shipment.shipmentDate).toLocaleDateString() : "N/A"}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                          {shipment.selectType}
+                          {shipment.selectType || "N/A"}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -293,7 +401,7 @@ const deleteMutation = useMutation({
           </div>
 
           {/* Pagination */}
-          {shipmentsData?.pagination && (
+          {pagination && pagination.pages > 1 && (
             <div className="bg-white px-4 py-3 border-t border-gray-200 sm:px-6">
               <div className="flex items-center justify-between">
                 <div className="flex-1 flex justify-between sm:hidden">
@@ -305,8 +413,8 @@ const deleteMutation = useMutation({
                     Previous
                   </button>
                   <button
-                    onClick={() => setCurrentPage(Math.min(shipmentsData.pagination.pages, currentPage + 1))}
-                    disabled={currentPage === shipmentsData.pagination.pages}
+                    onClick={() => setCurrentPage(Math.min(pagination.pages, currentPage + 1))}
+                    disabled={currentPage === pagination.pages}
                     className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Next
@@ -317,7 +425,7 @@ const deleteMutation = useMutation({
                     <p className="text-sm text-gray-700">
                       Showing page{' '}
                       <span className="font-medium">{currentPage}</span> of{' '}
-                      <span className="font-medium">{shipmentsData.pagination.pages}</span>
+                      <span className="font-medium">{pagination.pages}</span>
                     </p>
                   </div>
                   <div>
@@ -334,7 +442,7 @@ const deleteMutation = useMutation({
                       </button>
                       
                       {/* Page numbers */}
-                      {Array.from({ length: Math.min(5, shipmentsData.pagination.pages) }, (_, i) => {
+                      {Array.from({ length: Math.min(5, pagination.pages) }, (_, i) => {
                         const page = i + 1;
                         return (
                           <button
@@ -352,8 +460,8 @@ const deleteMutation = useMutation({
                       })}
                       
                       <button
-                        onClick={() => setCurrentPage(Math.min(shipmentsData.pagination.pages, currentPage + 1))}
-                        disabled={currentPage === shipmentsData.pagination.pages}
+                        onClick={() => setCurrentPage(Math.min(pagination.pages, currentPage + 1))}
+                        disabled={currentPage === pagination.pages}
                         className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <span className="sr-only">Next</span>

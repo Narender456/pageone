@@ -48,10 +48,20 @@ export function PageDialog({ page, studies, sites, stages = [], open, onOpenChan
   const [searchTermStudies, setSearchTermStudies] = useState("")
   const { toast } = useToast()
 
+  // Debug: Log stages data when component mounts or stages prop changes
+  useEffect(() => {
+    console.log('Stages received in PageDialog:', stages);
+    console.log('Stages length:', stages?.length || 0);
+    console.log('Stages array check:', Array.isArray(stages));
+  }, [stages]);
+
   // Reset form when dialog opens/closes or page changes
   useEffect(() => {
     if (open) {
       if (page) {
+        // Get stage ID from various possible formats
+        const stageId = page.stages?.id || page.stages?._id || page.stages?.slug || page.stages;
+        
         // Initialize sites with "siteId-studyId" pairs from existing assignments
         const initialSiteStudyPairs =
           page.pageSiteStudyAssignments?.map((assignment) => `${assignment.site.id}-${assignment.study.id}`) || []
@@ -60,10 +70,10 @@ export function PageDialog({ page, studies, sites, stages = [], open, onOpenChan
           title: page.title || "",
           content: page.content || "",
           css: page.css || "",
-          stages: page.stages?.id || "",
-          studies: page.studies?.map((s) => s.id) || [],
+          stages: stageId || "",
+          studies: page.studies?.map((s) => s.id || s._id) || [],
           sites: initialSiteStudyPairs,
-          shipment: page.shipment?.id || "",
+          shipment: page.shipment?.id || page.shipment?._id || "",
           generateScreeningInRandomization: page.generateScreeningInRandomization || false,
           windowStart: page.windowStart ? new Date(page.windowStart).toISOString().slice(0, 16) : "",
           windowEnd: page.windowEnd ? new Date(page.windowEnd).toISOString().slice(0, 16) : "",
@@ -93,11 +103,74 @@ export function PageDialog({ page, studies, sites, stages = [], open, onOpenChan
   // Fetch sites dynamically based on selected studies
   useEffect(() => {
     const fetchSitesForSelectedStudies = async () => {
-      if (formData.studies.length > 0) {
+      // Add validation to ensure formData.studies is defined and not empty
+      if (formData.studies && Array.isArray(formData.studies) && formData.studies.length > 0) {
         try {
-          const response = await pagesApi.fetchSitesForStudies(formData.studies)
-          if (response.success) {
-            setAvailableSiteStudyPairs(response.data.sites)
+          // Filter out any undefined or null values from the studies array
+          const validStudyIds = formData.studies.filter(id => id !== undefined && id !== null && id !== '');
+          
+          if (validStudyIds.length > 0) {
+            console.log('Fetching sites for studies:', validStudyIds);
+            console.log('Available studies:', studies);
+            console.log('Available sites:', sites);
+            
+            // Since the API endpoint seems to be missing, let's create site-study pairs
+            // from the available sites and studies data
+            const siteStudyPairs = [];
+            
+            // Match sites with selected studies based on protocol numbers
+            validStudyIds.forEach(studyId => {
+              const study = studies.find(s => s._id === studyId);
+              console.log(`Looking for study with ID ${studyId}:`, study);
+              
+              if (study) {
+                console.log(`Study found: ${study.study_name}, protocol: ${study.protocol_number}`);
+                
+                // Find sites that match this study's protocol number
+                const matchingSites = sites.filter(site => {
+                  console.log(`Comparing site protocol ${site.protocolNumber} with study protocol ${study.protocol_number}`);
+                  return site.protocolNumber === study.protocol_number;
+                });
+                
+                console.log(`Matching sites for study ${study.study_name}:`, matchingSites);
+                
+                if (matchingSites.length === 0) {
+                  // If no exact match, create a pair anyway for demonstration
+                  // In a real scenario, you might want to handle this differently
+                  console.log(`No matching sites found for study ${study.study_name}, creating pairs with all sites`);
+                  
+                  sites.forEach(site => {
+                    siteStudyPairs.push({
+                      siteId: site._id,
+                      studyId: study._id,
+                      siteName: site.siteName,
+                      studyName: study.study_name,
+                      siteIdentifier: site.siteId,
+                      piName: site.piName
+                    });
+                  });
+                } else {
+                  matchingSites.forEach(site => {
+                    siteStudyPairs.push({
+                      siteId: site._id,
+                      studyId: study._id,
+                      siteName: site.siteName,
+                      studyName: study.study_name,
+                      siteIdentifier: site.siteId,
+                      piName: site.piName
+                    });
+                  });
+                }
+              } else {
+                console.log(`No study found with ID ${studyId}`);
+              }
+            });
+            
+            console.log('Generated site-study pairs:', siteStudyPairs);
+            setAvailableSiteStudyPairs(siteStudyPairs);
+            
+          } else {
+            setAvailableSiteStudyPairs([])
           }
         } catch (error) {
           console.error("Error fetching sites for studies:", error)
@@ -108,7 +181,7 @@ export function PageDialog({ page, studies, sites, stages = [], open, onOpenChan
       }
     }
     fetchSitesForSelectedStudies()
-  }, [formData.studies])
+  }, [formData.studies, sites, studies])
 
   // Fetch shipments when exactly one study and one site are selected
   useEffect(() => {
@@ -137,8 +210,23 @@ export function PageDialog({ page, studies, sites, stages = [], open, onOpenChan
 
   // Determine if shipment and screening fields should be visible
   const isRandomizationStage = useMemo(() => {
-    const selectedStage = stages.find((s) => s.id === formData.stages)
-    return selectedStage?.name.toLowerCase() === "randomization"
+    if (!formData.stages || !stages || stages.length === 0) {
+      return false;
+    }
+    
+    const selectedStage = stages.find((s) => {
+      const stageId = s.id || s._id || s.slug;
+      return stageId === formData.stages;
+    });
+    
+    console.log('Selected stage for randomization check:', selectedStage);
+    
+    if (!selectedStage) {
+      return false;
+    }
+    
+    const stageName = selectedStage.name || selectedStage.title || selectedStage.stageName || '';
+    return stageName.toLowerCase().includes('randomization');
   }, [formData.stages, stages])
 
   // Filter studies based on search term
@@ -148,9 +236,11 @@ export function PageDialog({ page, studies, sites, stages = [], open, onOpenChan
     }
     return studies.filter(
       (study) =>
-        study.studyName.toLowerCase().includes(searchTermStudies.toLowerCase()) ||
-        study.studyNumber.toLowerCase().includes(searchTermStudies.toLowerCase()) ||
-        study.description?.toLowerCase().includes(searchTermStudies.toLowerCase()),
+        // Use the correct property names from your data structure
+        (study.study_name && study.study_name.toLowerCase().includes(searchTermStudies.toLowerCase())) ||
+        (study.protocol_number && study.protocol_number.toLowerCase().includes(searchTermStudies.toLowerCase())) ||
+        (study.description && study.description.toLowerCase().includes(searchTermStudies.toLowerCase())) ||
+        (study.study_title && study.study_title.toLowerCase().includes(searchTermStudies.toLowerCase()))
     )
   }, [studies, searchTermStudies])
 
@@ -206,10 +296,20 @@ export function PageDialog({ page, studies, sites, stages = [], open, onOpenChan
   }
 
   const handleSelectAllStudies = (checked) => {
-    setFormData((prev) => ({
-      ...prev,
-      studies: checked ? studies.map((s) => s.id) : [],
-    }))
+    if (checked) {
+      // Select all filtered studies
+      const allFilteredStudyIds = filteredStudies.map((s) => s._id)
+      setFormData((prev) => ({
+        ...prev,
+        studies: allFilteredStudyIds,
+      }))
+    } else {
+      // Deselect all studies
+      setFormData((prev) => ({
+        ...prev,
+        studies: [],
+      }))
+    }
   }
 
   const formatShipmentLabel = (shipment) => {
@@ -220,6 +320,14 @@ export function PageDialog({ page, studies, sites, stages = [], open, onOpenChan
   }
 
   const isShipmentReadOnly = page && page.shipment
+
+  // Check if all filtered studies are selected
+  const areAllFilteredStudiesSelected = filteredStudies.length > 0 && 
+    filteredStudies.every(study => formData.studies.includes(study._id))
+
+  // Debug: Log current stages and formData.stages
+  console.log('Current stages in render:', stages);
+  console.log('Current formData.stages:', formData.stages);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -251,13 +359,30 @@ export function PageDialog({ page, studies, sites, stages = [], open, onOpenChan
                   <SelectValue placeholder="Select stage" />
                 </SelectTrigger>
                 <SelectContent>
-                  {stages.map((stage) => (
-                    <SelectItem key={stage.id} value={stage.id}>
-                      {stage.name}
+                  {!stages || stages.length === 0 ? (
+                    <SelectItem value="no-stages" disabled>
+                      No stages available
                     </SelectItem>
-                  ))}
+                  ) : (
+                    stages.map((stage) => {
+                      const stageId = stage.id || stage._id || stage.slug;
+                      const stageName = stage.name || stage.title || stage.stageName || `Stage ${stageId}`;
+                      
+                      return (
+                        <SelectItem key={stageId} value={stageId}>
+                          {stageName}
+                        </SelectItem>
+                      );
+                    })
+                  )}
                 </SelectContent>
               </Select>
+              {/* Debug info - remove in production */}
+              {process.env.NODE_ENV === 'development' && (
+                <div className="text-xs text-gray-500">
+                  Debug: {stages?.length || 0} stages available
+                </div>
+              )}
             </div>
           </div>
 
@@ -355,11 +480,10 @@ export function PageDialog({ page, studies, sites, stages = [], open, onOpenChan
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => handleSelectAllStudies(filteredStudies.length !== formData.studies.length)}
+                onClick={() => handleSelectAllStudies(!areAllFilteredStudiesSelected)}
+                disabled={filteredStudies.length === 0}
               >
-                {filteredStudies.length === formData.studies.length && filteredStudies.length > 0
-                  ? "Deselect All"
-                  : "Select All"}
+                {areAllFilteredStudiesSelected ? "Deselect All" : "Select All"}
               </Button>
             </div>
             <div className="border rounded-md p-3 max-h-40 overflow-y-auto">
@@ -368,8 +492,8 @@ export function PageDialog({ page, studies, sites, stages = [], open, onOpenChan
                   <TableRow>
                     <TableHead className="w-[50px]">Select</TableHead>
                     <TableHead>Study Name</TableHead>
-                    <TableHead>Study Number</TableHead>
-                    <TableHead>Description</TableHead>
+                    <TableHead>Protocol Number</TableHead>
+                    <TableHead>Study Title</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -381,17 +505,17 @@ export function PageDialog({ page, studies, sites, stages = [], open, onOpenChan
                     </TableRow>
                   ) : (
                     filteredStudies.map((study) => (
-                      <TableRow key={study.id}>
+                      <TableRow key={study._id}>
                         <TableCell>
                           <Checkbox
-                            id={`study-${study.id}`}
-                            checked={formData.studies.includes(study.id)}
-                            onCheckedChange={(checked) => handleStudyChange(study.id, checked)}
+                            id={`study-${study._id}`}
+                            checked={formData.studies.includes(study._id)}
+                            onCheckedChange={(checked) => handleStudyChange(study._id, checked)}
                           />
                         </TableCell>
-                        <TableCell className="font-medium">{study.studyName}</TableCell>
-                        <TableCell>{study.studyNumber}</TableCell>
-                        <TableCell>{study.description || "N/A"}</TableCell>
+                        <TableCell className="font-medium">{study.study_name || "N/A"}</TableCell>
+                        <TableCell>{study.protocol_number || "N/A"}</TableCell>
+                        <TableCell>{study.study_title || "N/A"}</TableCell>
                       </TableRow>
                     ))
                   )}

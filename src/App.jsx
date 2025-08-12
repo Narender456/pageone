@@ -25,6 +25,7 @@ import RolesPage from "./page/role/RolesPage";
 import StagePage from "./page/Stages/StagePage";
 import MenuOptionsPage from "./page/MenuOption/MenuOptionsPage";
 import PagesPage from "./page/pages/page";
+import PageEditorPage from "./page/pages/editor/page";
 
 export default function App() {
   const { user, isLoading } = useAuth();
@@ -184,6 +185,14 @@ export default function App() {
        
       } 
         />
+      <Route
+    path="/page-editor/:slug"
+    element={
+      <ProtectedRoute>
+        <PageEditorPage />
+      </ProtectedRoute>
+    }
+  />
 
 
     </Routes>

@@ -1,10 +1,9 @@
-"use client";
-
-import { useState, useEffect } from "react";
-import { Button } from "../ui/buttons";
-import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
-import { Input } from "../ui/input";
-import { Badge } from "../ui/badge";
+"use client"
+import { useState, useEffect } from "react"
+import { Button } from "../ui/buttons"
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card"
+import { Input } from "../ui/input"
+import { Badge } from "../ui/badge"
 import {
   Table,
   TableBody,
@@ -12,20 +11,20 @@ import {
   TableHead,
   TableHeader,
   TableRow
-} from "../ui/table";
+} from "../ui/table"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger
-} from "../ui/dropdown-menu";
+} from "../ui/dropdown-menu"
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue
-} from "../ui/select";
+} from "../ui/select"
 import {
   Search,
   Plus,
@@ -37,178 +36,207 @@ import {
   CheckCircle,
   ArrowRight,
   RotateCcw,
-  Snowflake as Freeze,
-  Unplug as Unfreeze
-} from "lucide-react";
-import { useToast } from "../../hooks/use-toast";
-import { PageDialog } from "./page-dialog";
-import { DeletePageDialog } from "./delete-page-dialog";
-import { pagesApi } from "../../lib/pages-api";
+  SnowflakeIcon as Freeze,
+  UnplugIcon as Unfreeze,
+  PenTool
+} from "lucide-react"
+import { useToast } from "../../hooks/use-toast"
+import { PageDialog } from "./page-dialog"
+import { DeletePageDialog } from "./delete-page-dialog"
+import { pagesApi } from "../../lib/pages-api"
+import { useNavigate } from "react-router-dom"
 
-export function PageManagement({ initialPages = [], studies = [], sites = [], stages = [] }) {
+export function PageManagement({
+  initialPages = [],
+  studies = [],
+  sites = []
+}) {
+  const [pages, setPages] = useState(initialPages)
+  const [filteredPages, setFilteredPages] = useState(initialPages)
+  const [searchTerm, setSearchTerm] = useState("")
+  const [selectedStudy, setSelectedStudy] = useState("all")
+  const [selectedSite, setSelectedSite] = useState("all")
+  const [selectedPhase, setSelectedPhase] = useState("all")
+  const [isLoading, setIsLoading] = useState(false)
+  const [selectedPage, setSelectedPage] = useState(null)
+  const [isPageDialogOpen, setIsPageDialogOpen] = useState(false)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [permissions, setPermissions] = useState({
+    canEdit: false,
+    canDelete: false
+  })
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const { toast } = useToast()
+  const navigate = useNavigate()
 
-  const [pages, setPages] = useState(initialPages);
-  const [filteredPages, setFilteredPages] = useState([]);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedStudy, setSelectedStudy] = useState("all");
-  const [selectedSite, setSelectedSite] = useState("all");
-  const [selectedPhase, setSelectedPhase] = useState("all");
-  const [isLoading, setIsLoading] = useState(false);
-  const [selectedPage, setSelectedPage] = useState(null);
-  const [isPageDialogOpen, setIsPageDialogOpen] = useState(false);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  // Initialize permissions with canEdit: true for testing, or add fallback logic
-  const [permissions, setPermissions] = useState({ canEdit: true, canDelete: true });
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const { toast } = useToast();
 
+  // Load pages
   const loadPages = async () => {
     try {
-      setIsLoading(true);
+      setIsLoading(true)
       const response = await pagesApi.getPages({
         study: selectedStudy,
         site: selectedSite,
         page: currentPage
-      });
+      })
 
       if (response.success) {
-        setPages(response.data.pages);
-        // Ensure permissions are properly set, with fallback
-        setPermissions({
-          canEdit: response.data.permissions?.canEdit ?? true,
-          canDelete: response.data.permissions?.canDelete ?? true
-        });
-        setTotalPages(response.data.pagination.totalPages);
+        setPages(response.data.pages)
+        setPermissions(response.data.permissions)
+        setTotalPages(response.data.pagination.totalPages)
       }
     } catch (error) {
-      console.error("Error loading pages:", error);
-      // Set default permissions on error to ensure UI functionality
-      setPermissions({ canEdit: true, canDelete: true });
+      console.error("Error loading pages:", error)
       toast({
         title: "Error",
         description: "Failed to load pages",
         variant: "destructive"
-      });
+      })
     } finally {
-      setIsLoading(false);
+      setIsLoading(false)
     }
-  };
+  }
 
+  // Filter pages
   useEffect(() => {
-    let filtered = pages;
+    let filtered = pages
 
     if (searchTerm) {
       filtered = filtered.filter(
-        (page) =>
+        page =>
           page.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
           page.form?.category?.toLowerCase().includes(searchTerm.toLowerCase())
-      );
+      )
     }
 
     if (selectedPhase !== "all") {
-      filtered = filtered.filter((page) => page.phase === selectedPhase);
+      filtered = filtered.filter(page => page.phase === selectedPhase)
     }
 
-    setFilteredPages(filtered);
-  }, [pages, searchTerm, selectedPhase]);
+    setFilteredPages(filtered)
+  }, [pages, searchTerm, selectedPhase])
 
+  // Load pages on mount and filter changes
   useEffect(() => {
-    loadPages();
-  }, [selectedStudy, selectedSite, currentPage]);
+    loadPages()
+  }, [selectedStudy, selectedSite, currentPage])
 
+  // Handle page actions
   const handleCreatePage = () => {
-    setSelectedPage(null);
-    setIsPageDialogOpen(true);
-  };
+    setSelectedPage(null)
+    setIsPageDialogOpen(true)
+  }
 
-  const handleEditPage = (page) => {
-    setSelectedPage(page);
-    setIsPageDialogOpen(true);
-  };
+  const handleEditPage = page => {
+    setSelectedPage(page)
+    setIsPageDialogOpen(true)
+  }
 
-  const handleDeletePage = (page) => {
-    setSelectedPage(page);
-    setIsDeleteDialogOpen(true);
-  };
+  const handleDeletePage = page => {
+    setSelectedPage(page)
+    setIsDeleteDialogOpen(true)
+  }
 
-  const handleViewPage = (page) => {
-    window.open(`/pages/view/${page.slug}`, "_blank");
-  };
+  const handleViewPage = page => {
+    window.open(`/pages/view/${page.slug}`, "_blank")
+  }
 
+  const handleOpenEditor = page => {
+    navigate(`/page-editor/${page.slug}`);
+
+  }
+
+  // Phase transition handlers
   const handlePhaseTransition = async (page, action) => {
     try {
-      let response;
+      let response
       switch (action) {
         case "testing":
-          response = await pagesApi.moveToTesting(page.slug);
-          break;
+          response = await pagesApi.moveToTesting(page.slug)
+          break
         case "migrate":
-          response = await pagesApi.moveToMigrate(page.slug);
-          break;
+          response = await pagesApi.moveToMigrate(page.slug)
+          break
         case "live":
-          response = await pagesApi.moveToLive(page.slug);
-          break;
+          response = await pagesApi.moveToLive(page.slug)
+          break
         case "development":
-          response = await pagesApi.moveToDevelopment(page.slug);
-          break;
+          response = await pagesApi.moveToDevelopment(page.slug)
+          break
         case "mark-passed":
-          response = await pagesApi.markTestingPassed(page.slug);
-          break;
+          response = await pagesApi.markTestingPassed(page.slug)
+          break
         case "toggle-freeze":
-          response = await pagesApi.toggleFreezePage(page.slug);
-          break;
+          response = await pagesApi.toggleFreezePage(page.slug)
+          break
         default:
-          return;
+          return
       }
 
       if (response.success) {
         toast({
           title: "Success",
           description: response.message
-        });
-        loadPages();
+        })
+        loadPages()
       }
     } catch (error) {
-      console.error(`Error with ${action}:`, error);
+      console.error(`Error with ${action}:`, error)
       toast({
         title: "Error",
         description: `Failed to ${action} page`,
         variant: "destructive"
-      });
+      })
     }
-  };
+  }
 
-  const getPhaseBadgeColor = (phase) => {
+  // Get phase badge color
+  const getPhaseBadgeColor = phase => {
     switch (phase) {
       case "development":
-        return "bg-blue-100 text-blue-800";
+        return "bg-blue-100 text-blue-800"
       case "testing":
-        return "bg-yellow-100 text-yellow-800";
+        return "bg-yellow-100 text-yellow-800"
       case "migrate":
-        return "bg-orange-100 text-orange-800";
+        return "bg-orange-100 text-orange-800"
       case "live":
-        return "bg-green-100 text-green-800";
+        return "bg-green-100 text-green-800"
       default:
-        return "bg-gray-100 text-gray-800";
+        return "bg-gray-100 text-gray-800"
     }
-  };
+  }
 
-  const getAvailableActions = (page) => {
-    const actions = [];
+  // Get available actions for page
+  const getAvailableActions = page => {
+    const actions = []
 
     if (permissions.canEdit) {
-      actions.push({ label: "Edit", icon: Edit, action: () => handleEditPage(page) });
+      actions.push({
+        label: "Edit Details",
+        icon: Edit,
+        action: () => handleEditPage(page)
+      })
+      actions.push({
+        label: "Open in Editor",
+        icon: PenTool,
+        action: () => handleOpenEditor(page)
+      }) // New Editor button
     }
 
-    actions.push({ label: "View", icon: Eye, action: () => handleViewPage(page) });
+    actions.push({
+      label: "View Page",
+      icon: Eye,
+      action: () => handleViewPage(page)
+    })
 
+    // Phase-specific actions
     if (page.phase === "development" && permissions.canEdit) {
       actions.push({
         label: "Move to Testing",
         icon: Play,
         action: () => handlePhaseTransition(page, "testing")
-      });
+      })
     }
 
     if (page.phase === "testing" && permissions.canEdit) {
@@ -216,14 +244,14 @@ export function PageManagement({ initialPages = [], studies = [], sites = [], st
         label: "Mark as Passed",
         icon: CheckCircle,
         action: () => handlePhaseTransition(page, "mark-passed")
-      });
+      })
 
       if (page.testingPassed) {
         actions.push({
           label: "Move to Migrate",
           icon: ArrowRight,
           action: () => handlePhaseTransition(page, "migrate")
-        });
+        })
       }
     }
 
@@ -232,7 +260,7 @@ export function PageManagement({ initialPages = [], studies = [], sites = [], st
         label: "Move to Live",
         icon: ArrowRight,
         action: () => handlePhaseTransition(page, "live")
-      });
+      })
     }
 
     if (page.phase === "live" && permissions.canEdit) {
@@ -240,15 +268,16 @@ export function PageManagement({ initialPages = [], studies = [], sites = [], st
         label: "Revert to Development",
         icon: RotateCcw,
         action: () => handlePhaseTransition(page, "development")
-      });
+      })
     }
 
+    // Freeze/Unfreeze
     if (permissions.canEdit) {
       actions.push({
         label: page.isActive ? "Freeze" : "Unfreeze",
         icon: page.isActive ? Freeze : Unfreeze,
         action: () => handlePhaseTransition(page, "toggle-freeze")
-      });
+      })
     }
 
     if (permissions.canDelete && page.phase !== "live") {
@@ -257,14 +286,11 @@ export function PageManagement({ initialPages = [], studies = [], sites = [], st
         icon: Trash2,
         action: () => handleDeletePage(page),
         destructive: true
-      });
+      })
     }
 
-    return actions;
-  };
-
-  // Debug: Log permissions to check their state
-  console.log("Current permissions:", permissions);
+    return actions
+  }
 
   return (
     <div className="space-y-6">
@@ -272,10 +298,11 @@ export function PageManagement({ initialPages = [], studies = [], sites = [], st
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold">Page Management</h1>
-          <p className="text-muted-foreground">Manage clinical trial pages and their lifecycle phases</p>
+          <p className="text-muted-foreground">
+            Manage clinical trial pages and their lifecycle phases
+          </p>
         </div>
-        {/* Always show button for debugging, or add explicit check */}
-        {(permissions.canEdit || true) && (
+        {permissions.canEdit && (
           <Button onClick={handleCreatePage}>
             <Plus className="h-4 w-4 mr-2" />
             Create Page
@@ -297,7 +324,7 @@ export function PageManagement({ initialPages = [], studies = [], sites = [], st
                 <Input
                   placeholder="Search pages..."
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onChange={e => setSearchTerm(e.target.value)}
                   className="pl-10"
                 />
               </div>
@@ -311,7 +338,7 @@ export function PageManagement({ initialPages = [], studies = [], sites = [], st
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Studies</SelectItem>
-                  {studies.map((study) => (
+                  {studies.map(study => (
                     <SelectItem key={study.id} value={study.id}>
                       {study.studyName}
                     </SelectItem>
@@ -328,7 +355,7 @@ export function PageManagement({ initialPages = [], studies = [], sites = [], st
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Sites</SelectItem>
-                  {sites.map((site) => (
+                  {sites.map(site => (
                     <SelectItem key={site.id} value={site.id}>
                       {site.siteName}
                     </SelectItem>
@@ -369,7 +396,7 @@ export function PageManagement({ initialPages = [], studies = [], sites = [], st
                   <TableHead>Title</TableHead>
                   <TableHead>Stage</TableHead>
                   <TableHead>Phase</TableHead>
-                  {/* <TableHead>Status</TableHead> */}
+                  <TableHead>Status</TableHead>
                   <TableHead>Studies</TableHead>
                   <TableHead>Last Updated</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -389,7 +416,7 @@ export function PageManagement({ initialPages = [], studies = [], sites = [], st
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredPages.map((page) => (
+                  filteredPages.map(page => (
                     <TableRow key={page.id}>
                       <TableCell className="font-medium">
                         {page.title}
@@ -401,23 +428,35 @@ export function PageManagement({ initialPages = [], studies = [], sites = [], st
                       </TableCell>
                       <TableCell>{page.stages?.name || "N/A"}</TableCell>
                       <TableCell>
-                        <Badge className={getPhaseBadgeColor(page.phase)}>{page.phase}</Badge>
+                        <Badge className={getPhaseBadgeColor(page.phase)}>
+                          {page.phase}
+                        </Badge>
                       </TableCell>
-                      {/* <TableCell>
+                      <TableCell>
                         <div className="flex items-center space-x-2">
                           {page.phase === "testing" && (
-                            <Badge variant={page.testingPassed ? "default" : "secondary"}>
+                            <Badge
+                              variant={
+                                page.testingPassed ? "default" : "secondary"
+                              }
+                            >
                               {page.testingPassed ? "Passed" : "Pending"}
                             </Badge>
                           )}
-                          {page.isEdited && <Badge variant="outline">Edited</Badge>}
+                          {page.isEdited && (
+                            <Badge variant="outline">Edited</Badge>
+                          )}
                         </div>
-                      </TableCell> */}
+                      </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
-                          {page.studies?.slice(0, 2).map((study) => (
-                            <Badge key={study.id} variant="outline" className="text-xs">
-                              {study.study_name}
+                          {page.studies?.slice(0, 2).map(study => (
+                            <Badge
+                              key={study.id}
+                              variant="outline"
+                              className="text-xs"
+                            >
+                              {study.studyName}
                             </Badge>
                           ))}
                           {page.studies && page.studies.length > 2 && (
@@ -427,7 +466,9 @@ export function PageManagement({ initialPages = [], studies = [], sites = [], st
                           )}
                         </div>
                       </TableCell>
-                      <TableCell>{new Date(page.lastUpdated).toLocaleDateString()}</TableCell>
+                      <TableCell>
+                        {new Date(page.lastUpdated).toLocaleDateString()}
+                      </TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -440,7 +481,9 @@ export function PageManagement({ initialPages = [], studies = [], sites = [], st
                               <DropdownMenuItem
                                 key={index}
                                 onClick={action.action}
-                                className={action.destructive ? "text-red-600" : ""}
+                                className={
+                                  action.destructive ? "text-red-600" : ""
+                                }
                               >
                                 <action.icon className="h-4 w-4 mr-2" />
                                 {action.label}
@@ -461,7 +504,7 @@ export function PageManagement({ initialPages = [], studies = [], sites = [], st
             <div className="flex justify-center space-x-2 mt-4">
               <Button
                 variant="outline"
-                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                 disabled={currentPage === 1}
               >
                 Previous
@@ -471,7 +514,9 @@ export function PageManagement({ initialPages = [], studies = [], sites = [], st
               </span>
               <Button
                 variant="outline"
-                onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                onClick={() =>
+                  setCurrentPage(prev => Math.min(totalPages, prev + 1))
+                }
                 disabled={currentPage === totalPages}
               >
                 Next
@@ -482,19 +527,17 @@ export function PageManagement({ initialPages = [], studies = [], sites = [], st
       </Card>
 
       {/* Dialogs */}
-<PageDialog
-  page={selectedPage}
-  studies={studies}
-  sites={sites}
-  stages={stages} // ✅ FIX ADDED HERE
-  open={isPageDialogOpen}
-  onOpenChange={setIsPageDialogOpen}
-  onSuccess={() => {
-    loadPages()
-    setIsPageDialogOpen(false)
-  }}
-/>
-
+      <PageDialog
+        page={selectedPage}
+        studies={studies}
+        sites={sites}
+        open={isPageDialogOpen}
+        onOpenChange={setIsPageDialogOpen}
+        onSuccess={() => {
+          loadPages()
+          setIsPageDialogOpen(false)
+        }}
+      />
 
       <DeletePageDialog
         page={selectedPage}
